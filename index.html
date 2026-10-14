@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Brainrot Shorts Studio</title>
+  <meta name="description" content="Reddit-Stories + ElevenLabs-Voice-over + Gameplay = fertige YouTube Shorts, direkt im Browser." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Luckiest+Guy&family=Montserrat:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🧠</span>
+      <div>
+        <h1>Brainrot Shorts Studio</h1>
+        <p>Reddit-Story → ElevenLabs-Voice-over → Gameplay → fertiges Short. Alles läuft lokal in deinem Browser.</p>
+      </div>
+    </div>
+    <div id="support" class="support">Prüfe Browser…</div>
+  </header>
+
+  <main class="layout">
+    <div class="controls">
+      <!-- 1. ElevenLabs -->
+      <section class="card">
+        <h2><span class="step">1</span> ElevenLabs Voice-over</h2>
+        <div class="row">
+          <label class="grow">API-Key
+            <input id="apiKey" type="password" placeholder="sk_…" autocomplete="off" data-setting="apiKey" />
+          </label>
+          <button id="connectBtn" class="btn">Verbinden</button>
+        </div>
+        <p class="hint" id="quota">Der Key wird nur in deinem Browser (localStorage) gespeichert und direkt an api.elevenlabs.io gesendet.</p>
+        <div class="row">
+          <label class="grow">Stimme
+            <select id="voice" data-setting="voiceId"><option value="">– erst verbinden –</option></select>
+          </label>
+          <button id="previewVoiceBtn" class="btn ghost" title="Stimmprobe abspielen">▶︎</button>
+        </div>
+        <div class="row">
+          <label class="grow">Modell
+            <select id="model" data-setting="modelId"></select>
+          </label>
+        </div>
+        <div class="grid2">
+          <label>Tempo <output id="speedOut">1.10</output>
+            <input id="speed" type="range" min="0.7" max="1.2" step="0.05" value="1.1" data-setting="speed" />
+          </label>
+          <label>Stabilität <output id="stabilityOut">0.45</output>
+            <input id="stability" type="range" min="0" max="1" step="0.05" value="0.45" data-setting="stability" />
+          </label>
+        </div>
+      </section>
+
+      <!-- 2. Story finden -->
+      <section class="card">
+        <h2><span class="step">2</span> Story finden</h2>
+        <div id="subChips" class="chips"></div>
+        <div class="row">
+          <input id="customSub" class="grow" placeholder="Weiteres Subreddit, z.B. raisedbynarcissists" />
+          <button id="addSubBtn" class="btn ghost">+ Hinzufügen</button>
+        </div>
+        <div class="grid3">
+          <label>Sortierung
+            <select id="sort" data-setting="sort">
+              <option value="top">Top</option>
+              <option value="hot">Hot</option>
+              <option value="new">Neu</option>
+              <option value="controversial">Kontrovers</option>
+            </select>
+          </label>
+          <label>Zeitraum
+            <select id="time" data-setting="time">
+              <option value="day">Heute</option>
+              <option value="week" selected>Woche</option>
+              <option value="month">Monat</option>
+              <option value="year">Jahr</option>
+              <option value="all">Alle Zeit</option>
+            </select>
+          </label>
+          <label>Länge (Sek.)
+            <span class="pair">
+              <input id="minSec" type="number" min="5" max="600" value="30" data-setting="minSec" />
+              <span>–</span>
+              <input id="maxSec" type="number" min="10" max="600" value="90" data-setting="maxSec" />
+            </span>
+          </label>
+        </div>
+        <div class="row wrap">
+          <label class="check"><input id="allowNsfw" type="checkbox" data-setting="allowNsfw" /> NSFW erlauben</label>
+          <label class="check"><input id="hideUsed" type="checkbox" checked data-setting="hideUsed" /> Bereits verwendete ausblenden</label>
+          <span class="grow"></span>
+          <button id="loadStoriesBtn" class="btn primary">Stories laden</button>
+        </div>
+        <div id="storyStatus" class="hint"></div>
+        <ul id="storyList" class="stories"></ul>
+        <details>
+          <summary>Reddit-Link oder eigenen Text verwenden</summary>
+          <div class="row">
+            <input id="postUrl" class="grow" placeholder="https://www.reddit.com/r/confessions/comments/…" />
+            <button id="loadUrlBtn" class="btn ghost">Laden</button>
+          </div>
+          <button id="blankStoryBtn" class="btn ghost small">Leeres Skript – selbst schreiben/einfügen</button>
+        </details>
+        <details>
+          <summary>Reddit blockiert? CORS-Proxy</summary>
+          <label>Proxy-URL (optional, <code>{url}</code> wird durch die Reddit-URL ersetzt)
+            <input id="proxy" placeholder="https://corsproxy.io/?url={url}" data-setting="proxy" />
+          </label>
+          <p class="hint">Normalerweise klappt der direkte Abruf. Falls Reddit dein Netzwerk blockiert, kannst du hier einen CORS-Proxy eintragen – oder den Text einfach manuell einfügen.</p>
+        </details>
+      </section>
+
+      <!-- 3. Skript -->
+      <section class="card">
+        <h2><span class="step">3</span> Skript</h2>
+        <div class="grid2">
+          <label>Subreddit <input id="postSub" placeholder="confessions" /></label>
+          <label>Autor <input id="postAuthor" placeholder="throwaway123" /></label>
+        </div>
+        <label>Titel (wird auf der Reddit-Karte gezeigt und vorgelesen)
+          <input id="postTitle" placeholder="Titel der Story" />
+        </label>
+        <label>Text
+          <textarea id="postBody" rows="10" placeholder="Hier landet die Story. Du kannst sie frei bearbeiten."></textarea>
+        </label>
+        <div class="row wrap">
+          <label class="check"><input id="censor" type="checkbox" checked data-setting="censor" /> YouTube-sicher (freak, unalive, …)</label>
+          <label class="check"><input id="stripEdits" type="checkbox" checked data-setting="stripEdits" /> „Edit:“-Nachträge entfernen</label>
+          <span class="grow"></span>
+          <button id="recleanBtn" class="btn ghost small" title="Original-Text erneut aufbereiten">↻ Neu aufbereiten</button>
+        </div>
+        <p id="scriptStats" class="stats"></p>
+      </section>
+
+      <!-- 4. Gameplay & Style -->
+      <section class="card">
+        <h2><span class="step">4</span> Gameplay, Musik &amp; Style</h2>
+        <h3>Gameplay-Bibliothek</h3>
+        <p class="hint">Lade eigene Clips hoch (Subway Surfers, Minecraft-Parkour, GTA-Ramps …, idealerweise H.264-MP4). Sie werden in deinem Browser gespeichert. Ohne Clip wird der eingebaute Neon-Runner verwendet.</p>
+        <div class="row">
+          <label class="btn ghost file">🎮 Clips hinzufügen<input id="gameplayInput" type="file" accept="video/*" multiple hidden /></label>
+          <label class="grow">Verwenden
+            <select id="gameplayMode" data-setting="gameplayMode"></select>
+          </label>
+        </div>
+        <ul id="gameplayList" class="media"></ul>
+
+        <h3>Hintergrundmusik</h3>
+        <div class="row">
+          <label class="btn ghost file">🎵 Musik hinzufügen<input id="musicInput" type="file" accept="audio/*" multiple hidden /></label>
+          <label class="grow">Verwenden
+            <select id="musicMode" data-setting="musicMode"></select>
+          </label>
+        </div>
+        <ul id="musicList" class="media"></ul>
+        <label>Musik-Lautstärke <output id="musicVolumeOut">0.12</output>
+          <input id="musicVolume" type="range" min="0" max="0.6" step="0.01" value="0.12" data-setting="musicVolume" />
+        </label>
+
+        <h3>Untertitel</h3>
+        <div class="grid3">
+          <label>Schrift
+            <select id="font" data-setting="font">
+              <option value="Montserrat">Montserrat</option>
+              <option value="Anton">Anton</option>
+              <option value="Bangers">Bangers</option>
+              <option value="Luckiest Guy">Luckiest Guy</option>
+            </select>
+          </label>
+          <label>Wörter pro Einblendung
+            <select id="maxWords" data-setting="maxWords">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="4">4</option>
+            </select>
+          </label>
+          <label>Größe <output id="captionSizeOut">0.085</output>
+            <input id="captionSize" type="range" min="0.05" max="0.13" step="0.005" value="0.085" data-setting="captionSize" />
+          </label>
+          <label>Textfarbe <input id="textColor" type="color" value="#ffffff" data-setting="textColor" /></label>
+          <label>Highlight <input id="highlightColor" type="color" value="#ffe600" data-setting="highlightColor" /></label>
+          <label>Position <output id="captionPosOut">0.50</output>
+            <input id="captionPos" type="range" min="0.25" max="0.75" step="0.01" value="0.5" data-setting="captionPos" />
+          </label>
+        </div>
+        <div class="row wrap">
+          <label class="check"><input id="uppercase" type="checkbox" checked data-setting="uppercase" /> GROSSBUCHSTABEN</label>
+          <label class="check"><input id="animate" type="checkbox" checked data-setting="animate" /> Pop-Animation</label>
+          <label class="check"><input id="highlight" type="checkbox" checked data-setting="highlight" /> Aktuelles Wort hervorheben</label>
+        </div>
+
+        <h3>Extras</h3>
+        <div class="grid3">
+          <label>Reddit-Karte
+            <select id="cardTheme" data-setting="cardTheme">
+              <option value="light">Hell</option>
+              <option value="dark">Dunkel</option>
+              <option value="off">Aus</option>
+            </select>
+          </label>
+          <label>Wasserzeichen <input id="watermark" placeholder="@deinkanal" data-setting="watermark" /></label>
+          <label>Abdunkeln <output id="dimOut">0.10</output>
+            <input id="dim" type="range" min="0" max="0.6" step="0.02" value="0.1" data-setting="dim" />
+          </label>
+        </div>
+        <div class="row wrap">
+          <label class="check"><input id="progressBar" type="checkbox" checked data-setting="progressBar" /> Fortschrittsbalken</label>
+          <label class="check"><input id="fps60" type="checkbox" data-setting="fps60" /> 60 FPS (langsamer)</label>
+        </div>
+      </section>
+    </div>
+
+    <aside class="preview">
+      <div class="sticky">
+        <div class="phone"><canvas id="canvas" width="1080" height="1920"></canvas></div>
+        <div class="actions">
+          <button id="renderBtn" class="btn primary big">🎬 Short erstellen</button>
+          <div class="row">
+            <label class="autopilot">Autopilot
+              <input id="autoCount" type="number" min="1" max="20" value="3" data-setting="autoCount" /> Videos
+            </label>
+            <button id="autoBtn" class="btn ghost grow" title="Lädt Stories, wählt passende aus, erzeugt Voice-over und rendert nacheinander">🤖 Automatisch erzeugen</button>
+          </div>
+          <div id="progressWrap" class="progress" hidden>
+            <div class="bar"><div id="progressFill"></div></div>
+            <div class="row">
+              <span id="progressText" class="grow">…</span>
+              <button id="cancelBtn" class="btn ghost small">Abbrechen</button>
+            </div>
+          </div>
+          <div id="error" class="error" hidden></div>
+        </div>
+        <h3 class="results-title" id="resultsTitle" hidden>Fertige Shorts</h3>
+        <ul id="results" class="results"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    Stories gehören ihren Autor:innen auf Reddit – nenne die Quelle in der Beschreibung (wird automatisch erzeugt).
+    Lade nur Gameplay hoch, das du verwenden darfst. · Video-Encoding mit <a href="https://mediabunny.dev" target="_blank" rel="noopener">Mediabunny</a>.
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
