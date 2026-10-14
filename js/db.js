@@ -25,8 +25,8 @@ async function tx(mode, fn) {
   });
 }
 
-export async function addMedia(kind, file) {
-  const item = { id: crypto.randomUUID(), kind, name: file.name, size: file.size, type: file.type, added: Date.now(), blob: file };
+export async function addMedia(kind, file, extra = {}) {
+  const item = { id: crypto.randomUUID(), kind, name: file.name, size: file.size, type: file.type, added: Date.now(), blob: file, ...extra };
   await tx('readwrite', (s) => s.put(item));
   return item;
 }

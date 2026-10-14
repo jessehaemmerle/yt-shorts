@@ -3,7 +3,9 @@ import { cleanText, wordCount, estimateSeconds, formatDuration, formatCount, slu
 import { MODELS, listVoices, getSubscription, synthesize } from './tts.js';
 import { buildWords, buildChunks } from './captions.js';
 import { renderVideo, checkSupport, WIDTH, HEIGHT } from './render.js';
-import { drawProceduralBackground, drawRedditCard, drawCaption, drawProgressBar, drawWatermark } from './draw.js';
+import { drawRedditCard, drawCaption, drawProgressBar, drawWatermark, drawVideoFrame } from './draw.js';
+import { BUILTIN_BACKGROUNDS, createBackground } from './backgrounds.js';
+import { OPEN_GAMEPLAY, creditLine, downloadClip } from './catalog.js';
 import { addMedia, listMedia, deleteMedia, getMedia } from './db.js';
 import { Input, BlobSource, ALL_FORMATS, CanvasSink } from '../vendor/mediabunny-1.59.1.min.mjs';
 
@@ -26,6 +28,7 @@ const state = {
   music: [],
   previewFrames: new Map(),
   previewItem: null,
+  downloads: new Map(),
 };
 
 /* ---------------- Persistenz ---------------- */
@@ -386,9 +389,17 @@ async function refreshMedia() {
 
   const gsel = $('gameplayMode');
   gsel.innerHTML = '';
-  gsel.add(new Option('🎲 Zufälliger Clip aus Bibliothek', 'random'));
-  gsel.add(new Option('🌈 Neon-Runner (eingebaut)', 'procedural'));
-  for (const m of state.gameplay) gsel.add(new Option('🎮 ' + m.name, m.id));
+  const groupRandom = el('optgroup', { label: 'Zufall' });
+  groupRandom.append(new Option('🎲 Zufälliger Clip aus Bibliothek', 'random'), new Option('🎲 Zufällige eingebaute Animation', 'random-builtin'));
+  const groupBuiltin = el('optgroup', { label: 'Eingebaute Animationen' });
+  for (const b of BUILTIN_BACKGROUNDS) groupBuiltin.append(new Option('✨ ' + b.name, 'bg:' + b.id));
+  gsel.append(groupRandom, groupBuiltin);
+  if (state.gameplay.length) {
+    const groupLib = el('optgroup', { label: 'Deine Bibliothek' });
+    for (const m of state.gameplay) groupLib.append(new Option('🎮 ' + m.name, m.id));
+    gsel.append(groupLib);
+  }
+  if (state.settings.gameplayMode === 'procedural') state.settings.gameplayMode = 'bg:neon';
   restoreSelect(gsel);
 
   const msel = $('musicMode');
@@ -401,6 +412,7 @@ async function refreshMedia() {
 
   renderMediaList($('gameplayList'), state.gameplay);
   renderMediaList($('musicList'), state.music);
+  renderCatalog();
   loadPreviewFrame();
 }
 
@@ -413,7 +425,55 @@ function renderMediaList(ul, items) {
       state.previewFrames.delete(m.id);
       refreshMedia();
     };
-    ul.appendChild(el('li', {}, el('span', { className: 'name', textContent: m.name }), el('span', { className: 'size', textContent: fmtSize(m.size) }), del));
+    ul.appendChild(
+      el(
+        'li',
+        {},
+        el('span', { className: 'name', textContent: m.name, title: m.credit || m.name }),
+        m.license ? el('span', { className: 'lic', textContent: m.license }) : null,
+        el('span', { className: 'size', textContent: fmtSize(m.size) }),
+        del
+      )
+    );
+  }
+}
+
+function renderCatalog() {
+  const ul = $('catalogList');
+  ul.innerHTML = '';
+  for (const item of OPEN_GAMEPLAY) {
+    const have = state.gameplay.some((m) => m.catalogId === item.id);
+    const btn = el('button', { className: 'btn small ' + (have ? 'ghost' : 'primary') });
+    const running = state.downloads.get(item.id);
+    btn.textContent = have ? '✓ In Bibliothek' : running != null ? `${Math.round(running * 100)} %` : `⬇ Laden (${fmtSize(item.size)})`;
+    btn.disabled = have || running != null;
+    btn.onclick = () => downloadCatalogItem(item, btn);
+    const desc = el(
+      'div',
+      { className: 'desc' },
+      el('b', { textContent: item.title }),
+      el('span', { textContent: `${item.genre} · ${formatDuration(item.duration)} · ${item.license} · ${item.author}` })
+    );
+    const link = el('a', { href: item.page, target: '_blank', rel: 'noopener', textContent: 'Quelle', className: 'lic' });
+    ul.appendChild(el('li', {}, desc, link, btn));
+  }
+}
+
+async function downloadCatalogItem(item, btn) {
+  state.downloads.set(item.id, 0);
+  btn.disabled = true;
+  try {
+    const file = await downloadClip(item, (p) => {
+      state.downloads.set(item.id, p);
+      btn.textContent = `${Math.round(p * 100)} %`;
+    });
+    await addMedia('gameplay', file, { catalogId: item.id, credit: creditLine(item), license: item.license });
+    toast(`${item.game} zur Bibliothek hinzugefügt`);
+  } catch (e) {
+    showError(new Error(`„${item.title}“ konnte nicht geladen werden: ${e.message}`));
+  } finally {
+    state.downloads.delete(item.id);
+    await refreshMedia();
   }
 }
 
@@ -429,11 +489,16 @@ async function addFiles(kind, files) {
 
 const randomOf = (arr) => (arr.length ? arr[Math.floor(Math.random() * arr.length)] : null);
 
-async function pickGameplay() {
+const randomBuiltin = () => randomOf(BUILTIN_BACKGROUNDS).id;
+
+/** Liefert { gameplay: Bibliotheks-Eintrag | null, backgroundId } für das nächste Video. */
+async function pickBackground() {
   const mode = $('gameplayMode').value;
-  if (mode === 'procedural') return null;
-  if (mode === 'random') return randomOf(state.gameplay);
-  return getMedia(mode);
+  if (mode.startsWith('bg:')) return { gameplay: null, backgroundId: mode.slice(3) };
+  if (mode === 'random-builtin' || (mode === 'random' && !state.gameplay.length)) return { gameplay: null, backgroundId: randomBuiltin() };
+  if (mode === 'random') return { gameplay: randomOf(state.gameplay), backgroundId: null };
+  const gameplay = await getMedia(mode);
+  return gameplay ? { gameplay, backgroundId: null } : { gameplay: null, backgroundId: randomBuiltin() };
 }
 
 async function pickMusic() {
@@ -447,18 +512,18 @@ async function pickMusic() {
 
 async function loadPreviewFrame() {
   const mode = $('gameplayMode').value;
-  const item = mode === 'procedural' ? null : mode === 'random' ? state.gameplay[0] : state.gameplay.find((m) => m.id === mode);
+  const item = mode === 'random' ? state.gameplay[0] : state.gameplay.find((m) => m.id === mode);
   state.previewItem = item?.id || null;
   if (!item || state.previewFrames.has(item.id)) return;
   try {
     const input = new Input({ source: new BlobSource(item.blob), formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
-    const sink = new CanvasSink(track, { width: WIDTH, height: HEIGHT, fit: 'cover' });
+    const sink = new CanvasSink(track, { width: WIDTH });
     const first = await track.getFirstTimestamp();
     const dur = await track.computeDuration();
     const frame = await sink.getCanvas(first + Math.min(5, (dur - first) / 2));
     if (frame) {
-      const c = el('canvas', { width: WIDTH, height: HEIGHT });
+      const c = el('canvas', { width: frame.canvas.width, height: frame.canvas.height });
       c.getContext('2d').drawImage(frame.canvas, 0, 0);
       state.previewFrames.set(item.id, c);
     }
@@ -507,12 +572,17 @@ function startPreviewLoop() {
   let last = 0;
   let cacheKey = '';
   let cached = null;
+  const previewBgs = new Map();
+  const previewBg = (id) => {
+    if (!previewBgs.has(id)) previewBgs.set(id, createBackground(id, 3));
+    return previewBgs.get(id);
+  };
   const t0 = performance.now();
   const frame = (now) => {
     requestAnimationFrame(frame);
     if (state.busy || now - last < 33) return;
     last = now;
-    const t = (now - t0) / 1000;
+    const t = Math.max(0, (now - t0) / 1000);
     const style = styleFromSettings();
     const sample = ($('postBody').value.trim() || DEMO_TEXT).split(/\s+/).slice(0, 24).join(' ');
     const perWord = 0.3;
@@ -525,9 +595,14 @@ function startPreviewLoop() {
     const loop = cardTime + sample.split(' ').length * perWord + 0.6;
     const lt = t % loop;
 
-    const bg = state.previewItem && state.previewFrames.get(state.previewItem);
-    if (bg) ctx.drawImage(bg, 0, 0);
-    else drawProceduralBackground(ctx, WIDTH, HEIGHT, t, 3);
+    const mode = $('gameplayMode').value;
+    const frameImg = state.previewItem && state.previewFrames.get(state.previewItem);
+    if (frameImg) drawVideoFrame(ctx, WIDTH, HEIGHT, frameImg, $('gameplayFit').value);
+    else {
+      // Bei Zufall die eingebauten Animationen in der Vorschau durchwechseln.
+      const id = mode.startsWith('bg:') ? mode.slice(3) : BUILTIN_BACKGROUNDS[Math.floor(t / 6) % BUILTIN_BACKGROUNDS.length].id;
+      previewBg(id).draw(ctx, WIDTH, HEIGHT, t);
+    }
     if (style.dim > 0) {
       ctx.fillStyle = `rgba(0,0,0,${style.dim})`;
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -576,7 +651,7 @@ async function produceCurrent(signal) {
   const titleEnd = titleWords && words.length ? words[Math.min(titleWords, words.length) - 1].end + 0.15 : 0;
   if (tts.audioBuffer.duration > 180) toast('Achtung: länger als 3 Minuten – YouTube behandelt das Video nicht als Short.');
 
-  const gameplay = await pickGameplay();
+  const { gameplay, backgroundId } = await pickBackground();
   const music = await pickMusic();
   const result = await renderVideo(
     {
@@ -585,6 +660,8 @@ async function produceCurrent(signal) {
       post,
       titleEnd: style.showCard ? titleEnd : 0,
       gameplayBlob: gameplay?.blob,
+      gameplayFit: $('gameplayFit').value,
+      backgroundId,
       musicBlob: music?.blob,
       style,
       canvas: $('canvas'),
@@ -592,13 +669,14 @@ async function produceCurrent(signal) {
     { onProgress: (p, msg) => setProgress(0.15 + p * 0.85, msg), signal }
   );
   markUsed(post.id);
-  addResult(post, result, gameplay?.name || 'Neon-Runner');
+  const bgName = gameplay?.name || BUILTIN_BACKGROUNDS.find((b) => b.id === backgroundId)?.name || 'Animation';
+  addResult(post, result, bgName, gameplay?.credit ? [gameplay.credit] : []);
   renderStoryList();
   return result;
 }
 
-function addResult(post, { blob, duration, codecs }, bgName) {
-  const meta = youtubeMetadata(post);
+function addResult(post, { blob, duration, codecs }, bgName, credits = []) {
+  const meta = youtubeMetadata(post, credits);
   const url = URL.createObjectURL(blob);
   const filename = `${slugify(post.title)}.mp4`;
 
@@ -713,7 +791,7 @@ async function init() {
 
   const msel = $('model');
   for (const m of MODELS) msel.add(new Option(m.name, m.id));
-  for (const id of ['model', 'sort', 'time', 'font', 'maxWords', 'cardTheme']) restoreSelect($(id));
+  for (const id of ['model', 'sort', 'time', 'font', 'maxWords', 'cardTheme', 'gameplayFit']) restoreSelect($(id));
   saveJson(SETTINGS_KEY, state.settings);
   syncOutputs();
 

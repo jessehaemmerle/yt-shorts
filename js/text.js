@@ -135,7 +135,7 @@ export function slugify(s, max = 50) {
     .slice(0, max) || 'short';
 }
 
-export function youtubeMetadata(post) {
+export function youtubeMetadata(post, credits = []) {
   const sub = post.subreddit ? `r/${post.subreddit}` : 'Reddit';
   const subTag = post.subreddit ? '#' + post.subreddit.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
   const tags = ['#shorts', '#reddit', '#redditstories', subTag, '#storytime'].filter(Boolean);
@@ -144,6 +144,6 @@ export function youtubeMetadata(post) {
   if (title.length + suffix.length > 100) title = title.slice(0, 100 - suffix.length - 1).trimEnd() + '…';
   title += suffix;
   const credit = post.author ? `Story from ${sub} by u/${post.author}` : `Story from ${sub}`;
-  const description = [post.title, '', credit + (post.url ? `\n${post.url}` : ''), '', tags.join(' ')].join('\n');
+  const description = [post.title, '', credit + (post.url ? `\n${post.url}` : ''), ...credits, '', tags.join(' ')].join('\n');
   return { title, description, tags: tags.map((t) => t.slice(1)).join(', ') };
 }

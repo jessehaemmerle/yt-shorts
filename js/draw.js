@@ -443,3 +443,30 @@ export function drawWatermark(ctx, W, H, text, font = 'Montserrat') {
   ctx.fillText(text, W / 2, H * 0.74);
   ctx.restore();
 }
+
+/* ---------- Videoframe zeichnen: "cover" (zuschneiden) oder "contain" (ganzes Bild + unscharfer Hintergrund) ---------- */
+
+let blurCanvas = null;
+export function drawVideoFrame(ctx, W, H, src, fit = 'cover') {
+  const sw = src.width, sh = src.height;
+  const cover = Math.max(W / sw, H / sh);
+  if (fit !== 'contain') {
+    const dw = sw * cover, dh = sh * cover;
+    ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    return;
+  }
+  // Unschärfe günstig über Herunter- und wieder Hochskalieren
+  blurCanvas ??= Object.assign(document.createElement('canvas'), { width: 36, height: 64 });
+  const b = blurCanvas.getContext('2d');
+  const bs = Math.max(36 / sw, 64 / sh);
+  b.drawImage(src, (36 - sw * bs) / 2, (64 - sh * bs) / 2, sw * bs, sh * bs);
+  ctx.save();
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(blurCanvas, 0, 0, W, H);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+  const contain = Math.min(W / sw, H / sh);
+  const dw = sw * contain, dh = sh * contain;
+  ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}

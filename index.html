@@ -140,15 +140,28 @@
       <!-- 4. Gameplay & Style -->
       <section class="card">
         <h2><span class="step">4</span> Gameplay, Musik &amp; Style</h2>
-        <h3>Gameplay-Bibliothek</h3>
-        <p class="hint">Lade eigene Clips hoch (Subway Surfers, Minecraft-Parkour, GTA-Ramps …, idealerweise H.264-MP4). Sie werden in deinem Browser gespeichert. Ohne Clip wird der eingebaute Neon-Runner verwendet.</p>
-        <div class="row">
-          <label class="btn ghost file">🎮 Clips hinzufügen<input id="gameplayInput" type="file" accept="video/*" multiple hidden /></label>
-          <label class="grow">Verwenden
+        <h3>Hintergrund</h3>
+        <div class="grid2">
+          <label>Verwenden
             <select id="gameplayMode" data-setting="gameplayMode"></select>
           </label>
+          <label>Video-Zuschnitt
+            <select id="gameplayFit" data-setting="gameplayFit">
+              <option value="cover">Bildschirmfüllend (Mitte zuschneiden)</option>
+              <option value="contain">Ganzes Bild + unscharfer Rand</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">Sechs animierte Hintergründe sind eingebaut (Neon-Runner, Block-Parkour, Geometry Jump, Satisfying Balls, Block-Regen, Lava-Lampe). Dazu kannst du eigene Clips hochladen (Subway Surfers, Minecraft-Parkour …, ideal: H.264-MP4) oder freies Gameplay aus Open-Source-Spielen laden. Alles wird in deinem Browser gespeichert.</p>
+        <div class="row wrap">
+          <label class="btn ghost file">🎮 Eigene Clips hochladen<input id="gameplayInput" type="file" accept="video/*" multiple hidden /></label>
         </div>
         <ul id="gameplayList" class="media"></ul>
+        <details id="catalogBox">
+          <summary>📦 Kostenloses Gameplay aus Open-Source-Spielen (Wikimedia Commons)</summary>
+          <p class="hint">Frei lizenzierte Aufnahmen von SuperTux, VoxeLibre/MineClone2, Minetest, Veloren, Xonotic und Mindustry. Einmal laden – danach liegen sie in deiner Bibliothek. Die Lizenz-/Quellenangabe wird automatisch in die YouTube-Beschreibung geschrieben. Bei GPL und CC BY-SA gilt „Weitergabe unter gleichen Bedingungen“.</p>
+          <ul id="catalogList" class="media catalog"></ul>
+        </details>
 
         <h3>Hintergrundmusik</h3>
         <div class="row">

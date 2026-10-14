@@ -15,7 +15,8 @@ import {
 } from '../vendor/mediabunny-1.59.1.min.mjs';
 import { SAMPLE_RATE, decodeAudio } from './tts.js';
 import { chunkAt } from './captions.js';
-import { drawProceduralBackground, drawRedditCard, drawCaption, drawProgressBar, drawWatermark } from './draw.js';
+import { drawRedditCard, drawCaption, drawProgressBar, drawWatermark, drawVideoFrame } from './draw.js';
+import { createBackground } from './backgrounds.js';
 
 export const WIDTH = 1080;
 export const HEIGHT = 1920;
@@ -53,7 +54,7 @@ async function mixAudio(narration, { musicBlob, musicVolume = 0.15, tail = 0.8 }
   return ctx.startRendering();
 }
 
-async function openGameplay(blob, needed, fps) {
+async function openGameplay(blob, needed, fps, fit) {
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   const track = await input.getPrimaryVideoTrack();
   if (!track) throw new Error('Die Gameplay-Datei enthält keine Videospur.');
@@ -62,7 +63,9 @@ async function openGameplay(blob, needed, fps) {
   const duration = (await track.computeDuration()) - first;
   const maxStart = Math.max(0, duration - needed);
   const start = first + Math.random() * maxStart;
-  const sink = new CanvasSink(track, { width: WIDTH, height: HEIGHT, fit: 'cover', poolSize: 3 });
+  // "cover": direkt in Zielgröße zuschneiden lassen; "contain": volle Breite, Rest macht drawVideoFrame.
+  const sinkOpts = fit === 'contain' ? { width: WIDTH } : { width: WIDTH, height: HEIGHT, fit: 'cover' };
+  const sink = new CanvasSink(track, { ...sinkOpts, poolSize: 3 });
   const frames = Math.ceil(needed * fps);
   function* timestamps() {
     for (let i = 0; i < frames; i++) {
@@ -77,10 +80,11 @@ async function openGameplay(blob, needed, fps) {
  * @param {object} job
  *  narration: AudioBuffer, chunks: Untertitel, post: {title, subreddit, author, score, comments},
  *  titleEnd: Sekunde, an der der Titel fertig gesprochen ist,
- *  gameplayBlob?: Blob, musicBlob?: Blob, style: Stiloptionen, canvas: Ziel-Canvas (Vorschau)
+ *  gameplayBlob?: Blob, gameplayFit?: 'cover'|'contain', backgroundId?: eingebaute Animation (falls kein Gameplay),
+ *  musicBlob?: Blob, style: Stiloptionen, canvas: Ziel-Canvas (Vorschau)
  */
 export async function renderVideo(job, { onProgress, signal } = {}) {
-  const { narration, chunks, post, titleEnd, gameplayBlob, musicBlob, style, canvas } = job;
+  const { narration, chunks, post, titleEnd, gameplayBlob, gameplayFit = 'cover', backgroundId, musicBlob, style, canvas } = job;
   const fps = style.fps || 30;
   const support = await checkSupport();
   if (!support.ok) throw new Error(support.reason);
@@ -97,7 +101,7 @@ export async function renderVideo(job, { onProgress, signal } = {}) {
   let gameplay = null;
   if (gameplayBlob) {
     onProgress?.(0, 'Gameplay wird geladen…');
-    gameplay = await openGameplay(gameplayBlob, duration, fps);
+    gameplay = await openGameplay(gameplayBlob, duration, fps, gameplayFit);
   }
 
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() });
@@ -112,7 +116,7 @@ export async function renderVideo(job, { onProgress, signal } = {}) {
     const audioDone = audioSource.add(mixed).then(() => audioSource.close());
     audioDone.catch(() => {});
 
-    const seed = Math.floor(Math.random() * 1000);
+    const background = gameplay ? null : createBackground(backgroundId);
     let hint = 0;
     const started = performance.now();
     for (let i = 0; i < totalFrames; i++) {
@@ -121,13 +125,13 @@ export async function renderVideo(job, { onProgress, signal } = {}) {
 
       if (gameplay) {
         const { value } = await gameplay.iterator.next();
-        if (value?.canvas) ctx.drawImage(value.canvas, 0, 0, WIDTH, HEIGHT);
+        if (value?.canvas) drawVideoFrame(ctx, WIDTH, HEIGHT, value.canvas, gameplayFit);
         else {
           ctx.fillStyle = '#000';
           ctx.fillRect(0, 0, WIDTH, HEIGHT);
         }
       } else {
-        drawProceduralBackground(ctx, WIDTH, HEIGHT, t, seed);
+        background.draw(ctx, WIDTH, HEIGHT, t);
       }
       if (style.dim > 0) {
         ctx.fillStyle = `rgba(0,0,0,${style.dim})`;

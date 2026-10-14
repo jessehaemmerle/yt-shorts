@@ -5,7 +5,10 @@ Erstellt automatisch YouTube Shorts im klassischen „Reddit-Story + Gameplay“
 1. **Story finden** – lädt Top-Posts aus r/confessions, r/AmItheAsshole, r/tifu, r/TrueOffMyChest … (eigene Subreddits hinzufügbar) und filtert nach Länge.
 2. **Skript aufbereiten** – entfernt Links/Markdown/„Edit:“-Nachträge, schreibt Abkürzungen aus (AITA, BF, MIL, „(25F)“ …) und macht den Text optional YouTube-sicher (*freak*, *unalive*, …).
 3. **Voice-over** mit ElevenLabs inkl. Zeitstempeln pro Zeichen → wortgenaue Untertitel.
-4. **Video rendern** (1080×1920, 30/60 fps): Gameplay-Clip (Subway Surfers, Minecraft-Parkour, … – selbst hochgeladen) oder eingebauter Neon-Runner, Reddit-Karte während des Titels, große Pop-Untertitel mit Wort-Highlight, optionale Hintergrundmusik, Wasserzeichen, Fortschrittsbalken.
+4. **Video rendern** (1080×1920, 30/60 fps) mit Reddit-Karte während des Titels, großen Pop-Untertiteln mit Wort-Highlight, optionaler Hintergrundmusik, Wasserzeichen und Fortschrittsbalken. Als Hintergrund dienen:
+   - **6 eingebaute Animationen** (eigener Code, keine Assets): Neon-Runner (Subway-Stil), Block-Parkour (Minecraft-Stil), Geometry Jump, Satisfying Balls, Block-Regen (Tetris-Stil, spielt sich selbst), Lava-Lampe
+   - **freies Gameplay aus Open-Source-Spielen** per Klick aus Wikimedia Commons: SuperTux, VoxeLibre/MineClone2, Minetest, Veloren, Xonotic, Mindustry – Lizenz- und Quellenangabe landet automatisch in der YouTube-Beschreibung
+   - **eigene Clips** (Subway Surfers, Minecraft-Parkour, …) – wahlweise bildschirmfüllend zugeschnitten oder als ganzes Bild mit unscharfem Rand
 5. **Export** als MP4 + fertiger YouTube-Titel/Beschreibung mit Quellenangabe und Hashtags. Auf dem Handy direkt per „Teilen“ an die YouTube-App.
 
 **Autopilot:** erzeugt N Videos am Stück – Stories laden, passende unbenutzte auswählen, vertonen, rendern. Bereits verwendete Stories werden gemerkt.
@@ -41,7 +44,9 @@ Reddit wird direkt aus dem Browser über die öffentlichen `.json`-Endpunkte abg
 | `js/text.js` | Textaufbereitung, YouTube-Metadaten |
 | `js/tts.js` | ElevenLabs (`/with-timestamps`) |
 | `js/captions.js` | Wörter & Untertitel-Timing aus den Zeitstempeln |
-| `js/draw.js` | Reddit-Karte, Untertitel, Neon-Runner-Hintergrund |
+| `js/draw.js` | Reddit-Karte, Untertitel, Neon-Runner, Video-Zuschnitt |
+| `js/backgrounds.js` | Eingebaute animierte Hintergründe |
+| `js/catalog.js` | Katalog freier Open-Source-Gameplay-Clips (Wikimedia Commons) |
 | `js/render.js` | Audio-Mix + Video-Encoding (WebCodecs) |
 | `js/db.js` | IndexedDB-Ablage für Gameplay & Musik |
 | `vendor/mediabunny-1.59.1.min.mjs` | [Mediabunny](https://mediabunny.dev) (MPL-2.0) zum Dekodieren/Kodieren/Muxen |

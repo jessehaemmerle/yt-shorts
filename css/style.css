@@ -252,3 +252,10 @@ summary { cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--mut
   z-index: 10;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
+
+.media li .lic { font-size: 11px; color: var(--accent-3); white-space: nowrap; }
+.catalog li { flex-wrap: wrap; }
+.catalog li .desc { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.catalog li .desc b { font-size: 13px; }
+.catalog li .desc span { font-size: 12px; color: var(--muted); }
+.catalog li .btn { min-width: 110px; }
