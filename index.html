@@ -107,11 +107,19 @@
           <button id="blankStoryBtn" class="btn ghost small">Leeres Skript – selbst schreiben/einfügen</button>
         </details>
         <details>
-          <summary>Reddit blockiert? CORS-Proxy</summary>
-          <label>Proxy-URL (optional, <code>{url}</code> wird durch die Reddit-URL ersetzt)
-            <input id="proxy" placeholder="https://corsproxy.io/?url={url}" data-setting="proxy" />
+          <summary>Quelle &amp; Verbindung (falls Reddit blockiert)</summary>
+          <label>Quelle
+            <select id="redditSource" data-setting="redditSource">
+              <option value="auto">Automatisch – erst Reddit, sonst Archiv (empfohlen)</option>
+              <option value="reddit">Nur Reddit direkt (bzw. über Proxy)</option>
+              <option value="archive">Nur Arctic-Shift-Archiv (kein Proxy nötig)</option>
+            </select>
           </label>
-          <p class="hint">Normalerweise klappt der direkte Abruf. Falls Reddit dein Netzwerk blockiert, kannst du hier einen CORS-Proxy eintragen – oder den Text einfach manuell einfügen.</p>
+          <p class="hint">Reddit sperrt Abrufe aus manchen Netzen (VPN, Firmen-/Uni-Netz) und von fast allen öffentlichen CORS-Proxys. Dann springt automatisch das Reddit-Archiv <a href="https://arctic-shift.photon-reddit.com" target="_blank" rel="noopener">Arctic Shift</a> ein – gleiche Posts, Upvotes werden dort nachträglich aktualisiert (ganz frische Posts fehlen daher bei „Top“).</p>
+          <label>Eigener CORS-Proxy (optional, <code>{url}</code> wird durch die Reddit-URL ersetzt)
+            <input id="proxy" placeholder="https://dein-proxy.example/?url={url}" data-setting="proxy" />
+          </label>
+          <p class="hint">Nur nötig, wenn du unbedingt live von Reddit laden willst. Kostenlose Proxys wie corsproxy.io verlangen inzwischen einen API-Key oder werden von Reddit blockiert – meist ist das Archiv die bessere Wahl.</p>
         </details>
       </section>
 

@@ -30,9 +30,9 @@ Es gibt keinen Build-Schritt – reines HTML/CSS/JS. Lokal testen: `python3 -m h
 
 ### Reddit lädt nicht?
 
-Reddit wird direkt aus dem Browser über die öffentlichen `.json`-Endpunkte abgefragt. Manche Netzwerke (VPN, Firmen-Netz) werden von Reddit blockiert. Dann:
-- unter „Reddit blockiert? CORS-Proxy“ einen Proxy eintragen (z. B. `https://corsproxy.io/?url={url}`), oder
-- den Post-Link einfügen bzw. den Text einfach manuell ins Skript kopieren.
+Reddit wird zuerst direkt aus dem Browser über die öffentlichen `.json`-Endpunkte abgefragt. Reddit sperrt aber manche Netzwerke (VPN, Firmen-/Uni-Netz) und praktisch alle kostenlosen CORS-Proxys (corsproxy.io verlangt inzwischen außerdem einen API-Key). In dem Fall lädt das Tool automatisch über das Reddit-Archiv [Arctic Shift](https://arctic-shift.photon-reddit.com) – das erlaubt Browser-Zugriffe (CORS) und braucht keinen Proxy. Die Upvotes werden dort nachträglich aktualisiert, ganz frische Posts fehlen daher bei „Top“.
+
+Unter „Quelle & Verbindung“ lässt sich die Quelle fest wählen (Automatisch / nur Reddit / nur Archiv) und optional ein eigener CORS-Proxy eintragen. Alternativ: Post-Link einfügen oder Text manuell ins Skript kopieren.
 
 ## Aufbau
 

@@ -240,20 +240,38 @@ async function loadStories() {
   }
   $('loadStoriesBtn').disabled = true;
   status.textContent = `Lade ${subs.length} Subreddit(s)…`;
-  const opts = { sort: $('sort').value, time: $('time').value, limit: 75, proxy: $('proxy').value.trim() };
-  const results = await Promise.allSettled(subs.map((s) => fetchSubreddit(s, opts)));
+  const opts = { sort: $('sort').value, time: $('time').value, limit: 75, proxy: $('proxy').value.trim(), source: $('redditSource').value };
+  // Höchstens 3 Subreddits gleichzeitig, um die Quellen nicht mit Anfragen zu fluten.
+  const results = new Array(subs.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(3, subs.length) }, async () => {
+      while (next < subs.length) {
+        const i = next++;
+        try {
+          results[i] = { status: 'fulfilled', value: await fetchSubreddit(subs[i], opts) };
+        } catch (reason) {
+          results[i] = { status: 'rejected', reason };
+        }
+        status.textContent = `Lade Subreddits… ${results.filter(Boolean).length}/${subs.length}`;
+      }
+    })
+  );
   const seen = new Set();
   const stories = [];
   const errors = [];
+  let viaArchive = 0;
   results.forEach((r, i) => {
     if (r.status === 'rejected') errors.push(`r/${subs[i]}: ${r.reason.message}`);
-    else
-      for (const p of r.value) {
+    else {
+      if (r.value.via === 'archive') viaArchive++;
+      for (const p of r.value.posts) {
         if (seen.has(p.id)) continue;
         seen.add(p.id);
         p.seconds = storySeconds(p);
         stories.push(p);
       }
+    }
   });
   stories.sort((a, b) => b.score - a.score);
   state.stories = stories;
@@ -263,7 +281,14 @@ async function loadStories() {
     status.classList.add('err');
   } else {
     status.textContent =
-      `${stories.length} Stories geladen` + (errors.length ? ` · ${errors.length} Subreddit(s) fehlgeschlagen` : '') + '. Klicke eine Story an, um sie zu verwenden.';
+      `${stories.length} Stories geladen` +
+      (viaArchive
+        ? opts.source === 'archive'
+          ? ' (aus dem Arctic-Shift-Archiv)'
+          : ` (${viaArchive === results.length - errors.length ? '' : viaArchive + '× '}über das Arctic-Shift-Archiv, da Reddit direkt nicht erreichbar war)`
+        : '') +
+      (errors.length ? ` · ${errors.length} Subreddit(s) fehlgeschlagen: ${errors.join(' | ')}` : '') +
+      '. Klicke eine Story an, um sie zu verwenden.';
   }
   renderStoryList();
   return stories;
@@ -327,7 +352,7 @@ function reclean() {
 
 async function loadFromUrl() {
   try {
-    const p = await fetchPostByUrl($('postUrl').value, { proxy: $('proxy').value.trim() });
+    const p = await fetchPostByUrl($('postUrl').value, { proxy: $('proxy').value.trim(), source: $('redditSource').value });
     p.seconds = storySeconds(p);
     selectStory(p);
     toast('Post geladen');
@@ -791,7 +816,7 @@ async function init() {
 
   const msel = $('model');
   for (const m of MODELS) msel.add(new Option(m.name, m.id));
-  for (const id of ['model', 'sort', 'time', 'font', 'maxWords', 'cardTheme', 'gameplayFit']) restoreSelect($(id));
+  for (const id of ['model', 'sort', 'time', 'font', 'maxWords', 'cardTheme', 'gameplayFit', 'redditSource']) restoreSelect($(id));
   saveJson(SETTINGS_KEY, state.settings);
   syncOutputs();
 
