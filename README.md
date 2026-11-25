@@ -1,17 +1,22 @@
 # 🧠 Brainrot Shorts Studio
 
-Erstellt automatisch YouTube Shorts im klassischen „Reddit-Story + Gameplay“-Stil – komplett im Browser, gehostet auf GitHub Pages:
+Erstellt YouTube Shorts aus Reddit-Storys – komplett im Browser, gehostet auf GitHub Pages. Nicht als reines Vorlesen, sondern als eigenständiges Format:
 
-1. **Story finden** – lädt Top-Posts aus r/confessions, r/AmItheAsshole, r/tifu, r/TrueOffMyChest … (eigene Subreddits hinzufügbar) und filtert nach Länge.
-2. **Skript aufbereiten** – entfernt Links/Markdown/„Edit:“-Nachträge, schreibt Abkürzungen aus (AITA, BF, MIL, „(25F)“ …) und macht den Text optional YouTube-sicher (*freak*, *unalive*, …).
-3. **Voice-over** mit ElevenLabs inkl. Zeitstempeln pro Zeichen → wortgenaue Untertitel.
-4. **Video rendern** (1080×1920, 30/60 fps) mit Reddit-Karte während des Titels, großen Pop-Untertiteln mit Wort-Highlight, optionaler Hintergrundmusik, Wasserzeichen und Fortschrittsbalken. Als Hintergrund dienen:
-   - **6 eingebaute Animationen** (eigener Code, keine Assets): Neon-Runner (Subway-Stil), Block-Parkour (Minecraft-Stil), Geometry Jump, Satisfying Balls, Block-Regen (Tetris-Stil, spielt sich selbst), Lava-Lampe
-   - **freies Gameplay aus Open-Source-Spielen** per Klick aus Wikimedia Commons: SuperTux, VoxeLibre/MineClone2, Minetest, Veloren, Xonotic, Mindustry – Lizenz- und Quellenangabe landet automatisch in der YouTube-Beschreibung
-   - **eigene Clips** (Subway Surfers, Minecraft-Parkour, …) – wahlweise bildschirmfüllend zugeschnitten oder als ganzes Bild mit unscharfem Rand
-5. **Export** als MP4 + fertiger YouTube-Titel/Beschreibung mit Quellenangabe und Hashtags. Auf dem Handy direkt per „Teilen“ an die YouTube-App.
+1. **Nische statt Mischmasch** – feste Serien wie *Arbeit & Chef-Storys*, *Rache*, *AITA*, *Beziehung*, *Familie*, *Geständnisse*, *Gruselig* (oder eigene Subreddits). Breite Subreddits werden nach Thema gefiltert; jede Serie hat eigene Farben, Hashtags, Abschlussfrage und einen Folgen-Zähler („Boss Files #12“).
+2. **Hook in den ersten 1–2 Sekunden** – das Video startet mit dem krassesten Satz der Story und großem Hook-Text im Bild, ohne Intro.
+3. **Eigene Ebene** – eine wiedererkennbare Erzähler-Figur (Richterin Rita, Kumpel Kev, Dr. Psycho-Logik, Drama-Tante Doris, neutral) mit Namen, Avatar, eigener Stimme und eigener Meinung bzw. Analyse samt Urteils-Stempel.
+4. **Story-Visuals statt Gameplay** – Chat-Nachbau für Dialoge, Emoji-Szenen mit Kernaussage, hochzählende Zahlen, die Reddit-Karte als Quelle. Alternativ *Split* (Visuals oben, Gameplay unten) oder *Klassisch* (Gameplay im Vollbild).
+5. **25–45 Sekunden & Loop** – Ziel-Länge einstellbar; lange Storys werden in Teile mit Cliffhanger („Teil 2 folgt“) gesplittet. Der letzte Satz läuft grammatisch in den Hook zurück, und das letzte Bild gleicht dem ersten – so loopt das Video nahtlos.
+6. **Engagement** – am Ende eine direkte Frage mit zwei Antwort-Buttons und Kommentar-Hinweis; die Frage steht auch ganz oben in der YouTube-Beschreibung.
 
-**Autopilot:** erzeugt N Videos am Stück – Stories laden, passende unbenutzte auswählen, vertonen, rendern. Bereits verwendete Stories werden gemerkt.
+Dazu: ElevenLabs-Voice-over mit wortgenauen Untertiteln, Autopilot (mehrere Storys inkl. aller Teile am Stück), MP4-Export (1080×1920) und fertige YouTube-Metadaten mit Quellenangabe.
+
+### Skript-Autor: eingebaut oder mit Claude
+
+- **Ohne KI (Standard):** wählt den dramatischsten Satz als Hook, baut Visuals aus Zitaten, Zahlen und Stichworten und splittet zu lange Storys. Die Story selbst wird nicht umgeschrieben, die Meinung ist eine Vorlage der Figur.
+- **Mit Claude (optional, empfohlen):** Anthropic-API-Key unter „Claude als Skript-Autor“ eintragen. Claude verdichtet die Story auf die Ziel-Länge, schreibt ein echtes Urteil bzw. eine Analyse im Stil der Figur, ein passendes Storyboard, den Loop-Satz und einen YouTube-Titel – und übersetzt auf Wunsch ins Deutsche. Der Key bleibt im Browser und geht nur an `api.anthropic.com` (offizielles Anthropic-SDK, lokal unter `vendor/`).
+
+Jedes Skript lässt sich vor dem Rendern Zeile für Zeile bearbeiten (Text, Visual-Typ, Chat-Absender, Emojis, Urteil, Frage, Loop).
 
 ## Live schalten (GitHub Pages)
 
@@ -40,6 +45,12 @@ Unter „Quelle & Verbindung“ lässt sich die Quelle fest wählen (Automatisch
 | --- | --- |
 | `index.html`, `css/style.css` | Oberfläche |
 | `js/app.js` | UI, Einstellungen, Autopilot |
+| `js/niches.js` | Nischen/Serien und Erzähler-Figuren |
+| `js/plan.js` | Skript-Modell (Hook, Story-Zeilen, Urteil, Frage, Loop) und Zeitachse |
+| `js/scriptgen.js` | Eingebauter Skript-Autor ohne KI |
+| `js/llm.js` | Skript-Autor mit Claude (structured output) |
+| `js/planeditor.js` | Bearbeitbarer Skript-Editor |
+| `js/visuals.js`, `js/compose.js` | Story-Visuals und Bildaufbau je Segment |
 | `js/reddit.js` | Reddit-Abruf |
 | `js/text.js` | Textaufbereitung, YouTube-Metadaten |
 | `js/tts.js` | ElevenLabs (`/with-timestamps`) |
@@ -50,5 +61,6 @@ Unter „Quelle & Verbindung“ lässt sich die Quelle fest wählen (Automatisch
 | `js/render.js` | Audio-Mix + Video-Encoding (WebCodecs) |
 | `js/db.js` | IndexedDB-Ablage für Gameplay & Musik |
 | `vendor/mediabunny-1.59.1.min.mjs` | [Mediabunny](https://mediabunny.dev) (MPL-2.0) zum Dekodieren/Kodieren/Muxen |
+| `vendor/anthropic-sdk-1.8.0.min.mjs` | Offizielles Anthropic-SDK (Apache-2.0), für den Browser gebündelt |
 
 Hinweis: Die Stories gehören ihren Autor:innen. Die automatisch erzeugte Beschreibung nennt Subreddit, Autor und Link – lass das drin.

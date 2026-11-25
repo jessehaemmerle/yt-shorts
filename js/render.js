@@ -14,8 +14,8 @@ import {
   getFirstEncodableAudioCodec,
 } from '../vendor/mediabunny-1.59.1.min.mjs';
 import { SAMPLE_RATE, decodeAudio } from './tts.js';
-import { chunkAt } from './captions.js';
-import { drawRedditCard, drawCaption, drawProgressBar, drawWatermark, drawVideoFrame } from './draw.js';
+import { drawVideoFrame } from './draw.js';
+import { composeFrame } from './compose.js';
 import { createBackground } from './backgrounds.js';
 
 export const WIDTH = 1080;
@@ -54,7 +54,7 @@ async function mixAudio(narration, { musicBlob, musicVolume = 0.15, tail = 0.8 }
   return ctx.startRendering();
 }
 
-async function openGameplay(blob, needed, fps, fit) {
+async function openGameplay(blob, needed, fps, fit, targetH = HEIGHT) {
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   const track = await input.getPrimaryVideoTrack();
   if (!track) throw new Error('Die Gameplay-Datei enthält keine Videospur.');
@@ -64,7 +64,7 @@ async function openGameplay(blob, needed, fps, fit) {
   const maxStart = Math.max(0, duration - needed);
   const start = first + Math.random() * maxStart;
   // "cover": direkt in Zielgröße zuschneiden lassen; "contain": volle Breite, Rest macht drawVideoFrame.
-  const sinkOpts = fit === 'contain' ? { width: WIDTH } : { width: WIDTH, height: HEIGHT, fit: 'cover' };
+  const sinkOpts = fit === 'contain' ? { width: WIDTH } : { width: WIDTH, height: Math.round(targetH), fit: 'cover' };
   const sink = new CanvasSink(track, { ...sinkOpts, poolSize: 3 });
   const frames = Math.ceil(needed * fps);
   function* timestamps() {
@@ -78,19 +78,19 @@ async function openGameplay(blob, needed, fps, fit) {
 
 /**
  * @param {object} job
- *  narration: AudioBuffer, chunks: Untertitel, post: {title, subreddit, author, score, comments},
- *  titleEnd: Sekunde, an der der Titel fertig gesprochen ist,
+ *  narration: AudioBuffer · scene: Szene für composeFrame (plan, timeline, chunks, post, style, persona, niche, mode, tag …)
  *  gameplayBlob?: Blob, gameplayFit?: 'cover'|'contain', backgroundId?: eingebaute Animation (falls kein Gameplay),
- *  musicBlob?: Blob, style: Stiloptionen, canvas: Ziel-Canvas (Vorschau)
+ *  musicBlob?: Blob, canvas: Ziel-Canvas (Vorschau)
  */
 export async function renderVideo(job, { onProgress, signal } = {}) {
-  const { narration, chunks, post, titleEnd, gameplayBlob, gameplayFit = 'cover', backgroundId, musicBlob, style, canvas } = job;
+  const { narration, scene, gameplayBlob, gameplayFit = 'cover', backgroundId, musicBlob, canvas, tail = 0.8 } = job;
+  const style = scene.style;
   const fps = style.fps || 30;
   const support = await checkSupport();
   if (!support.ok) throw new Error(support.reason);
 
   onProgress?.(0, 'Audio wird gemischt…');
-  const mixed = await mixAudio(narration, { musicBlob, musicVolume: style.musicVolume });
+  const mixed = await mixAudio(narration, { musicBlob, musicVolume: style.musicVolume, tail });
   const duration = mixed.duration;
   const totalFrames = Math.ceil(duration * fps);
 
@@ -98,11 +98,26 @@ export async function renderVideo(job, { onProgress, signal } = {}) {
   canvas.height = HEIGHT;
   const ctx = canvas.getContext('2d', { alpha: false });
 
+  // Gameplay wird nur im Gameplay- oder Split-Layout gebraucht.
+  const needsBackdrop = scene.mode === 'gameplay' || scene.mode === 'split';
+  const backdropH = scene.mode === 'split' ? HEIGHT / 2 : HEIGHT;
   let gameplay = null;
-  if (gameplayBlob) {
+  if (needsBackdrop && gameplayBlob) {
     onProgress?.(0, 'Gameplay wird geladen…');
-    gameplay = await openGameplay(gameplayBlob, duration, fps, gameplayFit);
+    gameplay = await openGameplay(gameplayBlob, duration, fps, gameplayFit, backdropH);
   }
+  const background = needsBackdrop && !gameplay ? createBackground(backgroundId) : null;
+  let currentFrame = null;
+  const drawGameplay = (c, w, h, t) => {
+    if (gameplay) {
+      if (currentFrame) drawVideoFrame(c, w, h, currentFrame, gameplayFit);
+      else {
+        c.fillStyle = '#000';
+        c.fillRect(0, 0, w, h);
+      }
+    } else background?.draw(c, w, h, t);
+  };
+  const frameScene = { ...scene, duration, drawGameplay };
 
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() });
   const videoSource = new CanvasSource(canvas, { codec: support.video, quality: QUALITY_HIGH, keyFrameInterval: 2 });
@@ -116,37 +131,13 @@ export async function renderVideo(job, { onProgress, signal } = {}) {
     const audioDone = audioSource.add(mixed).then(() => audioSource.close());
     audioDone.catch(() => {});
 
-    const background = gameplay ? null : createBackground(backgroundId);
-    let hint = 0;
+    const cache = {};
     const started = performance.now();
     for (let i = 0; i < totalFrames; i++) {
       if (signal?.aborted) throw new DOMException('Abgebrochen', 'AbortError');
       const t = i / fps;
-
-      if (gameplay) {
-        const { value } = await gameplay.iterator.next();
-        if (value?.canvas) drawVideoFrame(ctx, WIDTH, HEIGHT, value.canvas, gameplayFit);
-        else {
-          ctx.fillStyle = '#000';
-          ctx.fillRect(0, 0, WIDTH, HEIGHT);
-        }
-      } else {
-        background.draw(ctx, WIDTH, HEIGHT, t);
-      }
-      if (style.dim > 0) {
-        ctx.fillStyle = `rgba(0,0,0,${style.dim})`;
-        ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      }
-
-      const cardVisible = style.showCard && drawRedditCard(ctx, WIDTH, HEIGHT, post, t, titleEnd, style);
-      if (!cardVisible) {
-        const r = chunkAt(chunks, t, hint);
-        hint = r.index;
-        if (r.chunk && (!style.showCard || r.chunk.start >= titleEnd - 0.05)) drawCaption(ctx, WIDTH, HEIGHT, r.chunk, t, style);
-      }
-      drawWatermark(ctx, WIDTH, HEIGHT, style.watermark, style.font);
-      if (style.progressBar) drawProgressBar(ctx, WIDTH, HEIGHT, t / duration, style.highlightColor);
-
+      if (gameplay) currentFrame = (await gameplay.iterator.next()).value?.canvas || currentFrame;
+      composeFrame(ctx, WIDTH, HEIGHT, t, frameScene, cache);
       await videoSource.add(t, 1 / fps);
 
       if (i % 5 === 0) {

@@ -234,7 +234,7 @@ export function drawRedditCard(ctx, W, H, post, t, titleEnd, opts = {}) {
   const headerH = W * 0.1;
   const footerH = W * 0.08;
   const ch = pad + headerH + pad * 0.5 + lines.length * lineH + pad * 0.6 + footerH + pad * 0.6;
-  const cx = W / 2, cy = H * 0.42;
+  const cx = W / 2, cy = opts.cy ?? H * 0.42;
 
   ctx.globalAlpha = alpha;
   ctx.translate(cx, cy);
@@ -428,7 +428,7 @@ export function drawProgressBar(ctx, W, H, progress, color = '#ffe600') {
   ctx.fillRect(0, H - h, W * clamp01(progress), h);
 }
 
-export function drawWatermark(ctx, W, H, text, font = 'Montserrat') {
+export function drawWatermark(ctx, W, H, text, font = 'Montserrat', yRel = 0.74) {
   if (!text) return;
   ctx.save();
   ctx.font = `800 ${Math.round(W * 0.04)}px ${font}, Arial, sans-serif`;
@@ -438,9 +438,9 @@ export function drawWatermark(ctx, W, H, text, font = 'Montserrat') {
   ctx.lineWidth = W * 0.008;
   ctx.strokeStyle = 'rgba(0,0,0,0.8)';
   ctx.lineJoin = 'round';
-  ctx.strokeText(text, W / 2, H * 0.74);
+  ctx.strokeText(text, W / 2, H * yRel);
   ctx.fillStyle = '#fff';
-  ctx.fillText(text, W / 2, H * 0.74);
+  ctx.fillText(text, W / 2, H * yRel);
   ctx.restore();
 }
 

@@ -135,15 +135,23 @@ export function slugify(s, max = 50) {
     .slice(0, max) || 'short';
 }
 
-export function youtubeMetadata(post, credits = []) {
+export function youtubeMetadata(post, credits = [], { plan, scene, episode } = {}) {
   const sub = post.subreddit ? `r/${post.subreddit}` : 'Reddit';
-  const subTag = post.subreddit ? '#' + post.subreddit.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
-  const tags = ['#shorts', '#reddit', '#redditstories', subTag, '#storytime'].filter(Boolean);
-  let title = post.title.replace(/\s+/g, ' ').trim();
+  const lang = plan?.lang || 'en';
+  const nicheTags = plan?.hashtags?.length ? plan.hashtags : scene?.niche?.hashtags || [];
+  const subTag = post.subreddit ? post.subreddit.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+  const tags = [...new Set(['shorts', ...nicheTags.map((t) => t.toLowerCase().replace(/[^a-z0-9äöüß]/g, '')), subTag, 'redditstories'].filter(Boolean))].slice(0, 8);
+  const partSuffix = plan && plan.part.total > 1 ? (lang === 'de' ? ` (Teil ${plan.part.index}/${plan.part.total})` : ` (Part ${plan.part.index}/${plan.part.total})`) : '';
+  let title = (plan?.ytTitle || plan?.hookText || post.title).replace(/\s+/g, ' ').trim() + partSuffix;
   const suffix = ' #shorts';
   if (title.length + suffix.length > 100) title = title.slice(0, 100 - suffix.length - 1).trimEnd() + '…';
   title += suffix;
   const credit = post.author ? `Story from ${sub} by u/${post.author}` : `Story from ${sub}`;
-  const description = [post.title, '', credit + (post.url ? `\n${post.url}` : ''), ...credits, '', tags.join(' ')].join('\n');
-  return { title, description, tags: tags.map((t) => t.slice(1)).join(', ') };
+  const series = scene?.niche ? `${scene.niche.series[lang] || scene.niche.series.en}${episode ? ' #' + episode : ''}` : '';
+  const question = plan?.cta ? `💬 ${plan.cta}` : '';
+  const description = [question, '', plan?.hookText || post.title, series, '', credit + (post.url ? `\n${post.url}` : ''), ...credits, '', tags.map((t) => '#' + t).join(' ')]
+    .filter((l, i, a) => l !== '' || (a[i - 1] !== '' && i > 0))
+    .join('\n')
+    .trim();
+  return { title, description, tags: tags.join(', ') };
 }

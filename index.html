@@ -58,7 +58,11 @@
 
       <!-- 2. Story finden -->
       <section class="card">
-        <h2><span class="step">2</span> Story finden</h2>
+        <h2><span class="step">2</span> Nische &amp; Story</h2>
+        <label>Nische / Serie (ein klares Thema bringt wiederkehrende Abonnenten)
+          <select id="niche" data-setting="niche"></select>
+        </label>
+        <p class="hint" id="nicheHint"></p>
         <div id="subChips" class="chips"></div>
         <div class="row">
           <input id="customSub" class="grow" placeholder="Weiteres Subreddit, z.B. raisedbynarcissists" />
@@ -123,32 +127,85 @@
         </details>
       </section>
 
-      <!-- 3. Skript -->
+      <!-- 3. Skript & Format -->
       <section class="card">
-        <h2><span class="step">3</span> Skript</h2>
-        <div class="grid2">
-          <label>Subreddit <input id="postSub" placeholder="confessions" /></label>
-          <label>Autor <input id="postAuthor" placeholder="throwaway123" /></label>
+        <h2><span class="step">3</span> Skript &amp; Format</h2>
+        <div class="grid3">
+          <label>Erzähler-Figur
+            <select id="persona" data-setting="persona"></select>
+          </label>
+          <label>Name der Figur <input id="personaName" placeholder="z.B. Richterin Rita" data-setting="personaName" /></label>
+          <label>Sprache des Videos
+            <select id="lang" data-setting="lang">
+              <option value="en">Englisch</option>
+              <option value="de">Deutsch (übersetzt, nur mit Claude)</option>
+            </select>
+          </label>
         </div>
-        <label>Titel (wird auf der Reddit-Karte gezeigt und vorgelesen)
-          <input id="postTitle" placeholder="Titel der Story" />
-        </label>
-        <label>Text
-          <textarea id="postBody" rows="10" placeholder="Hier landet die Story. Du kannst sie frei bearbeiten."></textarea>
-        </label>
+        <div class="grid3">
+          <label>Ziel-Länge pro Video <output id="targetSecOut">35</output> s
+            <input id="targetSec" type="range" min="20" max="60" step="1" value="35" data-setting="targetSec" />
+          </label>
+          <label class="check"><input id="allowParts" type="checkbox" checked data-setting="allowParts" /> Lange Storys in Teile mit Cliffhanger splitten</label>
+          <label class="check"><input id="renderAllParts" type="checkbox" checked data-setting="renderAllParts" /> Autopilot rendert alle Teile</label>
+        </div>
         <div class="row wrap">
-          <label class="check"><input id="censor" type="checkbox" checked data-setting="censor" /> YouTube-sicher (freak, unalive, …)</label>
-          <label class="check"><input id="stripEdits" type="checkbox" checked data-setting="stripEdits" /> „Edit:“-Nachträge entfernen</label>
-          <span class="grow"></span>
-          <button id="recleanBtn" class="btn ghost small" title="Original-Text erneut aufbereiten">↻ Neu aufbereiten</button>
+          <label class="check"><input id="withTake" type="checkbox" checked data-setting="withTake" /> Eigene Meinung/Urteil</label>
+          <label class="check"><input id="withCta" type="checkbox" checked data-setting="withCta" /> Kommentar-Frage am Ende</label>
+          <label class="check"><input id="withLoop" type="checkbox" checked data-setting="withLoop" /> Loop-Ende (läuft in den Anfang zurück)</label>
         </div>
-        <p id="scriptStats" class="stats"></p>
+        <details id="claudeBox">
+          <summary>✍️ Claude als Skript-Autor (empfohlen für echte Urteile, Kürzen &amp; Deutsch)</summary>
+          <p class="hint">Ohne Claude arbeitet ein eingebauter Autor: Er wählt den krassesten Satz als Hook, baut Chat-/Emoji-Visuals aus der Story und splittet in Teile – die Story selbst wird aber nicht gekürzt, und die Meinung ist eine Vorlage. Mit Claude wird die Story auf 25–45 s verdichtet, wirklich beurteilt und auf Wunsch übersetzt.</p>
+          <div class="row">
+            <label class="grow">Anthropic API-Key
+              <input id="claudeKey" type="password" placeholder="sk-ant-…" autocomplete="off" data-setting="claudeKey" />
+            </label>
+            <label>Modell <select id="claudeModel" data-setting="claudeModel"></select></label>
+          </div>
+          <p class="hint">Der Key bleibt in deinem Browser und geht nur an api.anthropic.com. Einen Key bekommst du unter console.anthropic.com. Ein Skript kostet je nach Modell etwa 0,5–3 Cent.</p>
+        </details>
+        <div class="row wrap">
+          <button id="writeBtn" class="btn primary">✨ Skript schreiben</button>
+          <span id="writeStatus" class="hint grow"></span>
+        </div>
+        <div id="planEditor" class="plan-editor"></div>
+        <details id="sourceBox">
+          <summary>📄 Original-Post (Quelle)</summary>
+          <div class="grid2">
+            <label>Subreddit <input id="postSub" placeholder="confessions" /></label>
+            <label>Autor <input id="postAuthor" placeholder="throwaway123" /></label>
+          </div>
+          <label>Titel
+            <input id="postTitle" placeholder="Titel der Story" />
+          </label>
+          <label>Text
+            <textarea id="postBody" rows="8" placeholder="Hier landet die Story. Du kannst sie frei bearbeiten oder eigenen Text einfügen."></textarea>
+          </label>
+          <div class="row wrap">
+            <label class="check"><input id="censor" type="checkbox" checked data-setting="censor" /> YouTube-sicher (freak, unalive, …)</label>
+            <label class="check"><input id="stripEdits" type="checkbox" checked data-setting="stripEdits" /> „Edit:“-Nachträge entfernen</label>
+            <span class="grow"></span>
+            <button id="recleanBtn" class="btn ghost small" title="Original-Text erneut aufbereiten">↻ Neu aufbereiten</button>
+          </div>
+          <p id="scriptStats" class="stats"></p>
+        </details>
       </section>
 
       <!-- 4. Gameplay & Style -->
       <section class="card">
-        <h2><span class="step">4</span> Gameplay, Musik &amp; Style</h2>
-        <h3>Hintergrund</h3>
+        <h2><span class="step">4</span> Look, Gameplay &amp; Musik</h2>
+        <label>Video-Look
+          <select id="visualMode" data-setting="visualMode">
+            <option value="story">Story-Visuals – Chat-Nachbau, Szenen, Hook-Text (eigenständig, empfohlen)</option>
+            <option value="split">Split – Story-Visuals oben, Gameplay unten</option>
+            <option value="gameplay">Klassisch – Gameplay im Vollbild mit Untertiteln</option>
+          </select>
+        </label>
+        <div class="row wrap">
+          <label class="check"><input id="showPersona" type="checkbox" checked data-setting="showPersona" /> Erzähler-Figur einblenden</label>
+        </div>
+        <h3>Gameplay (für Split &amp; Klassisch)</h3>
         <div class="grid2">
           <label>Verwenden
             <select id="gameplayMode" data-setting="gameplayMode"></select>
@@ -218,7 +275,7 @@
 
         <h3>Extras</h3>
         <div class="grid3">
-          <label>Reddit-Karte
+          <label>Reddit-Karte (1. Story-Zeile)
             <select id="cardTheme" data-setting="cardTheme">
               <option value="light">Hell</option>
               <option value="dark">Dunkel</option>

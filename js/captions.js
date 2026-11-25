@@ -1,5 +1,15 @@
 // Wandelt die Zeichen-Zeitstempel von ElevenLabs in Wörter und Untertitel-Häppchen um.
 
+/** Anzeige-Form eines Wortes; leer bei reinen Satzzeichen/Emojis (die zählen nicht als gesprochenes Wort). */
+export function cleanWord(raw) {
+  return raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}?!]+$/gu, '').replace(/[“”"]/g, '');
+}
+
+/** Zählt Wörter genau so, wie buildWords sie später aus den Zeitstempeln bildet. */
+export function spokenWordCount(text) {
+  return (String(text || '').match(/\S+/g) || []).filter((w) => cleanWord(w)).length;
+}
+
 export function buildWords(chars) {
   const words = [];
   let cur = null;
@@ -15,7 +25,7 @@ export function buildWords(chars) {
   }
   if (cur) words.push(cur);
   for (const w of words) {
-    w.text = w.raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}?!]+$/gu, '').replace(/[“”"]/g, '');
+    w.text = cleanWord(w.raw);
     w.sentenceEnd = /[.!?…]["')\]]*$/.test(w.raw);
     w.pause = /[,;:]["')\]]*$/.test(w.raw);
   }

@@ -1,12 +1,18 @@
 import { PRESET_SUBREDDITS, fetchSubreddit, fetchPostByUrl } from './reddit.js';
 import { cleanText, wordCount, estimateSeconds, formatDuration, formatCount, slugify, youtubeMetadata } from './text.js';
 import { MODELS, listVoices, getSubscription, synthesize } from './tts.js';
-import { buildWords, buildChunks } from './captions.js';
+import { buildChunks } from './captions.js';
 import { renderVideo, checkSupport, WIDTH, HEIGHT } from './render.js';
-import { drawRedditCard, drawCaption, drawProgressBar, drawWatermark, drawVideoFrame } from './draw.js';
+import { drawVideoFrame } from './draw.js';
 import { BUILTIN_BACKGROUNDS, createBackground } from './backgrounds.js';
 import { OPEN_GAMEPLAY, creditLine, downloadClip } from './catalog.js';
 import { addMedia, listMedia, deleteMedia, getMedia } from './db.js';
+import { NICHES, PERSONAS, getNiche, getPersona, matchesNiche, nextEpisode } from './niches.js';
+import { autoScript } from './scriptgen.js';
+import { claudeScript, CLAUDE_MODELS } from './llm.js';
+import { normalizePlan, narrationText, buildTimeline } from './plan.js';
+import { composeFrame, prepareBeats } from './compose.js';
+import { renderPlanEditor } from './planeditor.js';
 import { Input, BlobSource, ALL_FORMATS, CanvasSink } from '../vendor/mediabunny-1.59.1.min.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +35,8 @@ const state = {
   previewFrames: new Map(),
   previewItem: null,
   downloads: new Map(),
+  script: null, // { parts: Plan[], sourceKey }
+  ui: { partIdx: 0 },
 };
 
 /* ---------------- Persistenz ---------------- */
@@ -71,6 +79,10 @@ function initSettings() {
       if (['minSec', 'maxSec', 'hideUsed', 'allowNsfw'].includes(key)) renderStoryList();
       if (key === 'speed') updateStats();
       if (key === 'gameplayMode') loadPreviewFrame();
+      if (key === 'niche') applyNiche();
+      if (key === 'persona') applyPersona();
+      if (key === 'voiceId') rememberPersonaVoice();
+      if (key === 'targetSec' || key === 'speed') renderEditor();
     });
   }
   const subs = loadJson(SUBS_KEY, null);
@@ -86,9 +98,9 @@ function restoreSelect(el) {
 }
 
 function syncOutputs() {
-  for (const id of ['speed', 'stability', 'musicVolume', 'captionSize', 'captionPos', 'dim']) {
+  for (const id of ['speed', 'stability', 'musicVolume', 'captionSize', 'captionPos', 'dim', 'targetSec']) {
     const out = $(id + 'Out');
-    if (out) out.textContent = Number($(id).value).toFixed(id === 'captionSize' ? 3 : 2);
+    if (out) out.textContent = id === 'targetSec' ? $(id).value : Number($(id).value).toFixed(id === 'captionSize' ? 3 : 2);
   }
 }
 
@@ -299,7 +311,10 @@ function fitsLength(p) {
 }
 
 function visibleStories() {
-  return state.stories.filter((p) => (state.settings.allowNsfw || !p.over18) && (!state.settings.hideUsed || !state.used.has(p.id)));
+  const niche = getNiche($('niche').value);
+  return state.stories.filter(
+    (p) => (state.settings.allowNsfw || !p.over18) && (!state.settings.hideUsed || !state.used.has(p.id)) && matchesNiche(niche, p)
+  );
 }
 
 function badge(text, cls = '') {
@@ -339,6 +354,9 @@ function selectStory(p) {
   $('postAuthor').value = p.author || '';
   $('postTitle').value = cleanText(p.title, cleanOpts());
   $('postBody').value = cleanText(p.body, cleanOpts());
+  state.script = null;
+  state.ui.partIdx = 0;
+  renderEditor();
   updateStats();
   renderStoryList();
 }
@@ -364,30 +382,127 @@ async function loadFromUrl() {
 function blankStory() {
   state.current = { id: 'custom-' + Date.now(), subreddit: '', author: '', title: '', body: '', score: 0, comments: 0, url: '' };
   for (const id of ['postSub', 'postAuthor', 'postTitle', 'postBody']) $(id).value = '';
+  state.script = null;
+  renderEditor();
+  $('sourceBox').open = true;
   $('postTitle').focus();
   updateStats();
   renderStoryList();
 }
 
-function buildScript() {
-  let title = $('postTitle').value.trim();
+/** Der aktuelle Quell-Post aus den Feldern (der Nutzer kann Titel/Text frei ändern). */
+function sourcePost() {
+  const title = $('postTitle').value.trim();
   const body = $('postBody').value.trim();
-  if (!title && !body) throw new Error('Das Skript ist leer – wähle zuerst eine Story aus oder füge Text ein.');
-  // Satzzeichen nach dem Titel sorgt für eine Pause und trennt Titel- von Text-Untertiteln.
-  if (title && !/[.!?…]["')\]]*$/.test(title)) title += '.';
-  const ttsText = title ? `${title}\n\n${body}` : body;
-  const titleWords = (title.match(/\S+/g) || []).length;
+  if (!title && !body) throw new Error('Keine Story ausgewählt – wähle in Schritt 2 eine Story aus oder füge unter „Original-Post“ eigenen Text ein.');
   const score = state.current?.score || Math.round(1000 + Math.random() * 20000);
-  const post = {
+  return {
     id: state.current?.id || 'custom-' + Date.now(),
-    title: $('postTitle').value.trim() || body.slice(0, 80),
+    title: title || body.slice(0, 80),
+    body: body || title,
     subreddit: $('postSub').value.trim().replace(/^r\//i, ''),
     author: $('postAuthor').value.trim().replace(/^u\//i, ''),
     score,
     comments: state.current?.comments || Math.round(score / 12),
     url: state.current?.url || '',
   };
-  return { post, ttsText, titleWords };
+}
+
+function scriptOptions() {
+  return {
+    nicheId: $('niche').value,
+    personaId: $('persona').value,
+    personaName: $('personaName').value.trim(),
+    lang: $('lang').value,
+    targetSec: Number($('targetSec').value),
+    speed: Number($('speed').value),
+    allowParts: $('allowParts').checked,
+    withTake: $('withTake').checked,
+    withCta: $('withCta').checked,
+    withLoop: $('withLoop').checked,
+    censor: $('censor').checked,
+    stripEdits: $('stripEdits').checked,
+    apiKey: $('claudeKey').value.trim(),
+    model: $('claudeModel').value,
+  };
+}
+
+const sourceKey = (post, o) => JSON.stringify([post.title, post.body.length, o.nicheId, o.personaId, o.lang, o.targetSec, o.allowParts, o.withTake, o.withCta, o.withLoop]);
+
+/** Schreibt das Skript: mit Claude, falls ein Key hinterlegt ist, sonst mit dem eingebauten Autor. */
+async function writeScript() {
+  const post = sourcePost();
+  const o = scriptOptions();
+  $('writeStatus').textContent = o.apiKey ? 'Claude schreibt das Skript…' : 'Skript wird erstellt…';
+  let parts;
+  if (o.apiKey) {
+    parts = await claudeScript(post, o);
+    // Abgeschaltete Bausteine respektieren
+    for (const p of parts) {
+      if (!o.withTake) (p.take = ''), (p.verdict = '');
+      if (!o.withCta) p.cta = '';
+      if (!o.withLoop) p.loop = '';
+    }
+  } else {
+    parts = autoScript(post, o);
+  }
+  state.script = { parts, sourceKey: sourceKey(post, o), post };
+  state.ui.partIdx = 0;
+  $('writeStatus').textContent =
+    (o.apiKey ? '✍️ Von Claude geschrieben' : '⚙️ Automatisch erstellt (mit Claude-Key besser)') +
+    (parts.length > 1 ? ` · ${parts.length} Teile` : '') +
+    ' – du kannst alles unten anpassen.';
+  renderEditor();
+  return state.script;
+}
+
+async function ensureScript() {
+  const post = sourcePost();
+  if (state.script && state.script.sourceKey === sourceKey(post, scriptOptions())) return state.script;
+  return writeScript();
+}
+
+function renderEditor() {
+  renderPlanEditor($('planEditor'), state.script, state.ui, { speed: () => Number($('speed').value), onChange: () => {} });
+}
+
+/* ---------------- Nische & Erzähler-Figur ---------------- */
+
+function applyNiche({ initial = false } = {}) {
+  const niche = getNiche($('niche').value);
+  $('nicheHint').textContent = niche.subs
+    ? `Serie „${niche.series.de}“ · Subreddits: ${niche.subs.map((s) => 'r/' + s).join(', ')}${niche.filterSubs.length ? ' (breite Subs werden nach Thema gefiltert)' : ''}`
+    : 'Wähle unten frei, aus welchen Subreddits Stories kommen.';
+  if (niche.subs && !initial) {
+    for (const sub of niche.subs) if (!state.subs.list.includes(sub)) state.subs.list.push(sub);
+    state.subs.selected = new Set(niche.subs);
+    saveSubs();
+  }
+  renderChips();
+  renderStoryList();
+}
+
+function applyPersona({ initial = false } = {}) {
+  const persona = getPersona($('persona').value);
+  if (!initial) {
+    $('personaName').value = persona.name;
+    state.settings.personaName = persona.name;
+    // Ausdrucksstärke der Stimme passend zur Figur
+    $('stability').value = persona.voice.stability;
+    state.settings.stability = persona.voice.stability;
+    const saved = state.settings.personaVoices?.[persona.id];
+    if (saved && [...$('voice').options].some((o) => o.value === saved)) {
+      $('voice').value = saved;
+      state.settings.voiceId = saved;
+    }
+    saveJson(SETTINGS_KEY, state.settings);
+    syncOutputs();
+  }
+}
+
+function rememberPersonaVoice() {
+  state.settings.personaVoices = { ...(state.settings.personaVoices || {}), [$('persona').value]: $('voice').value };
+  saveJson(SETTINGS_KEY, state.settings);
 }
 
 function updateStats() {
@@ -576,27 +691,58 @@ function styleFromSettings() {
     progressBar: $('progressBar').checked,
     musicVolume: Number($('musicVolume').value),
     fps: $('fps60').checked ? 60 : 30,
+    showPersona: $('showPersona').checked,
   };
 }
 
-const DEMO_TEXT = 'So this happened last week and I still cannot believe it. My roommate thought I would never find out what she did with my car.';
+const DEMO_POST = {
+  id: 'demo',
+  subreddit: 'MaliciousCompliance',
+  author: 'throwaway_2931',
+  title: 'My boss said "do exactly what the manual says" so I did',
+  body: 'For context I have worked at this warehouse for 6 years. My new manager decided I was too slow and wrote me up. He told me, "From now on you follow the manual word for word." So I did. The manual says every box needs two signatures, so I waited for him every single time. We shipped 40 orders instead of 400 that day. Then the regional director called him at 4pm asking why $90,000 of orders were late. He came to my desk and said "Just do it your way." I said "Can I get that in writing?" He actually wrote it.',
+  score: 18400,
+  comments: 1210,
+};
 
-// Baut künstliche Zeichen-Zeitstempel, damit die Vorschau dieselbe Untertitel-Logik wie der Export nutzt.
-function fakeChars(text, start, perWord) {
+// Künstliche Zeitstempel (0,3 s pro Wort), damit die Vorschau dieselbe Zeitachse wie der Export nutzt.
+function fakeChars(text, perWord = 0.3) {
   const chars = [];
-  text.split(/\s+/).forEach((w, i) => {
-    const s = start + i * perWord;
-    for (const c of w) chars.push({ c, start: s, end: s + perWord });
-    chars.push({ c: ' ', start: s + perWord, end: s + perWord });
-  });
-  return chars;
+  let t = 0;
+  for (const w of text.split(/\s+/).filter(Boolean)) {
+    for (const c of w) chars.push({ c, start: t, end: t + perWord });
+    chars.push({ c: ' ', start: t + perWord, end: t + perWord });
+    t += perWord;
+  }
+  return { chars, duration: t + 0.6 };
+}
+
+function buildScene(plan, timeline, post, extra = {}) {
+  const niche = getNiche(plan.nicheId);
+  const persona = getPersona(plan.personaId);
+  const style = styleFromSettings();
+  const ep = extra.episode ?? nextEpisode(niche.id);
+  if (!style.showCard) for (const l of plan.lines) if (l.visual.type === 'reddit') l.visual = { ...l.visual, type: 'scene', emojis: '📄', text: post.title.split(/\s+/).slice(0, 5).join(' ') };
+  return {
+    plan,
+    timeline: prepareBeats(plan, timeline),
+    chunks: buildChunks(timeline.words, { maxWords: Number($('maxWords').value) }),
+    post,
+    style,
+    persona,
+    personaName: $('personaName').value.trim() || persona.name,
+    niche,
+    mode: $('visualMode').value,
+    tag: `${niche.series[plan.lang] || niche.series.en} #${ep}`.toUpperCase(),
+  };
 }
 
 function startPreviewLoop() {
   const ctx = $('canvas').getContext('2d', { alpha: false });
   let last = 0;
-  let cacheKey = '';
-  let cached = null;
+  let key = '';
+  let scene = null;
+  let demoPlan = null;
   const previewBgs = new Map();
   const previewBg = (id) => {
     if (!previewBgs.has(id)) previewBgs.set(id, createBackground(id, 3));
@@ -608,102 +754,98 @@ function startPreviewLoop() {
     if (state.busy || now - last < 33) return;
     last = now;
     const t = Math.max(0, (now - t0) / 1000);
-    const style = styleFromSettings();
-    const sample = ($('postBody').value.trim() || DEMO_TEXT).split(/\s+/).slice(0, 24).join(' ');
-    const perWord = 0.3;
-    const cardTime = style.showCard ? 2.5 : 0;
-    const key = sample + '|' + $('maxWords').value + '|' + cardTime;
-    if (key !== cacheKey) {
-      cacheKey = key;
-      cached = buildChunks(buildWords(fakeChars(sample, cardTime, perWord)), { maxWords: Number($('maxWords').value) });
+    const o = scriptOptions();
+    let plan = state.script?.parts[state.ui.partIdx];
+    let post = state.script?.post;
+    if (!plan) {
+      const dk = JSON.stringify([o.nicheId, o.personaId, o.withTake, o.withCta, o.withLoop]);
+      if (!demoPlan || demoPlan.key !== dk) demoPlan = { key: dk, plan: autoScript(DEMO_POST, { ...o, allowParts: false, targetSec: 60 })[0] };
+      plan = demoPlan.plan;
+      post = DEMO_POST;
     }
-    const loop = cardTime + sample.split(' ').length * perWord + 0.6;
-    const lt = t % loop;
-
+    const np = normalizePlan(plan);
+    const k = JSON.stringify([np, $('visualMode').value, $('maxWords').value, $('cardTheme').value, $('personaName').value, $('showPersona').checked]);
+    if (k !== key) {
+      key = k;
+      const { chars, duration } = fakeChars(narrationText(np));
+      scene = { ...buildScene(np, buildTimeline(np, chars, duration), post, { episode: nextEpisode(np.nicheId) }), duration };
+    }
+    scene.style = styleFromSettings();
     const mode = $('gameplayMode').value;
-    const frameImg = state.previewItem && state.previewFrames.get(state.previewItem);
-    if (frameImg) drawVideoFrame(ctx, WIDTH, HEIGHT, frameImg, $('gameplayFit').value);
-    else {
-      // Bei Zufall die eingebauten Animationen in der Vorschau durchwechseln.
-      const id = mode.startsWith('bg:') ? mode.slice(3) : BUILTIN_BACKGROUNDS[Math.floor(t / 6) % BUILTIN_BACKGROUNDS.length].id;
-      previewBg(id).draw(ctx, WIDTH, HEIGHT, t);
-    }
-    if (style.dim > 0) {
-      ctx.fillStyle = `rgba(0,0,0,${style.dim})`;
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    }
-    const post = {
-      title: $('postTitle').value.trim() || 'I secretly did something terrible to my roommate and she still has no idea',
-      subreddit: $('postSub').value.trim() || 'confessions',
-      author: $('postAuthor').value.trim() || 'throwaway_2931',
-      score: state.current?.score || 14200,
-      comments: state.current?.comments || 1830,
+    scene.drawGameplay = (c, w, h, tt) => {
+      const img = state.previewItem && state.previewFrames.get(state.previewItem);
+      if (img) drawVideoFrame(c, w, h, img, $('gameplayFit').value);
+      else {
+        const id = mode.startsWith('bg:') ? mode.slice(3) : BUILTIN_BACKGROUNDS[Math.floor(tt / 6) % BUILTIN_BACKGROUNDS.length].id;
+        previewBg(id).draw(c, w, h, tt);
+      }
     };
-    const shown = style.showCard && drawRedditCard(ctx, WIDTH, HEIGHT, post, lt, cardTime - 0.25, style);
-    if (!shown) {
-      const chunk = cached.find((c) => lt >= c.start && lt < c.showUntil);
-      if (chunk) drawCaption(ctx, WIDTH, HEIGHT, chunk, lt, style);
-    }
-    drawWatermark(ctx, WIDTH, HEIGHT, style.watermark, style.font);
-    if (style.progressBar) drawProgressBar(ctx, WIDTH, HEIGHT, lt / loop, style.highlightColor);
+    composeFrame(ctx, WIDTH, HEIGHT, t % scene.duration, scene, scene);
   };
   requestAnimationFrame(frame);
 }
 
 /* ---------------- Produktion ---------------- */
 
-async function produceCurrent(signal) {
-  const { post, ttsText, titleWords } = buildScript();
+async function produceCurrent(signal, partIdx = state.ui.partIdx) {
+  setProgress(0, 'Skript wird vorbereitet…');
+  const script = await ensureScript();
+  const plan = normalizePlan(script.parts[partIdx] || script.parts[0]);
+  const post = script.post;
   const style = styleFromSettings();
-  await Promise.all([document.fonts.load(`900 100px ${style.font}`), document.fonts.load('800 50px "Montserrat"')]).catch(() => {});
+  await Promise.all([document.fonts.load(`900 100px ${style.font}`), document.fonts.load('900 50px "Montserrat"')]).catch(() => {});
+  if (signal.aborted) throw new DOMException('Abgebrochen', 'AbortError');
 
-  setProgress(0, 'Voice-over wird bei ElevenLabs erzeugt…');
+  setProgress(0.02, 'Voice-over wird bei ElevenLabs erzeugt…');
+  const persona = getPersona(plan.personaId);
   const tts = await synthesize(
     {
       apiKey: $('apiKey').value.trim(),
       voiceId: $('voice').value,
       modelId: $('model').value,
-      text: ttsText,
+      text: narrationText(plan),
       speed: Number($('speed').value),
       stability: Number($('stability').value),
+      style: persona.voice.style,
     },
-    (p, msg) => setProgress(p * 0.15, msg)
+    (p, msg) => setProgress(0.02 + p * 0.13, msg)
   );
   if (signal.aborted) throw new DOMException('Abgebrochen', 'AbortError');
-
-  const words = buildWords(tts.chars);
-  const chunks = buildChunks(words, { maxWords: Number($('maxWords').value) });
-  const titleEnd = titleWords && words.length ? words[Math.min(titleWords, words.length) - 1].end + 0.15 : 0;
   if (tts.audioBuffer.duration > 180) toast('Achtung: länger als 3 Minuten – YouTube behandelt das Video nicht als Short.');
 
+  const tail = plan.loop ? 0.25 : 0.8;
+  const timeline = buildTimeline(plan, tts.chars, tts.audioBuffer.duration + tail);
+  const episode = nextEpisode(plan.nicheId);
+  const scene = buildScene(plan, timeline, post, { episode });
   const { gameplay, backgroundId } = await pickBackground();
   const music = await pickMusic();
   const result = await renderVideo(
     {
       narration: tts.audioBuffer,
-      chunks,
-      post,
-      titleEnd: style.showCard ? titleEnd : 0,
+      scene,
+      tail,
       gameplayBlob: gameplay?.blob,
       gameplayFit: $('gameplayFit').value,
       backgroundId,
       musicBlob: music?.blob,
-      style,
       canvas: $('canvas'),
     },
     { onProgress: (p, msg) => setProgress(0.15 + p * 0.85, msg), signal }
   );
   markUsed(post.id);
-  const bgName = gameplay?.name || BUILTIN_BACKGROUNDS.find((b) => b.id === backgroundId)?.name || 'Animation';
-  addResult(post, result, bgName, gameplay?.credit ? [gameplay.credit] : []);
+  nextEpisode(plan.nicheId, { commit: true });
+  const usesGameplay = scene.mode !== 'story';
+  const bgName =
+    scene.mode === 'story' ? 'Story-Visuals' : gameplay?.name || BUILTIN_BACKGROUNDS.find((b) => b.id === backgroundId)?.name || 'Animation';
+  addResult(post, result, bgName, usesGameplay && gameplay?.credit ? [gameplay.credit] : [], { plan, scene, episode });
   renderStoryList();
   return result;
 }
 
-function addResult(post, { blob, duration, codecs }, bgName, credits = []) {
-  const meta = youtubeMetadata(post, credits);
+function addResult(post, { blob, duration, codecs }, bgName, credits = [], ctx = {}) {
+  const meta = youtubeMetadata(post, credits, ctx);
   const url = URL.createObjectURL(blob);
-  const filename = `${slugify(post.title)}.mp4`;
+  const filename = `${slugify(meta.title.replace(/#shorts/i, ''))}.mp4`;
 
   const copyBtn = (label, field) => {
     const b = el('button', { className: 'btn ghost', textContent: label });
@@ -801,11 +943,19 @@ async function autopilot() {
         );
       }
       selectStory(story);
-      state.progressLabel = `Video ${i + 1}/${count}: `;
-      await produceCurrent(signal);
+      state.progressLabel = `Story ${i + 1}/${count}: `;
+      const script = await ensureScript();
+      const parts = $('renderAllParts').checked ? script.parts.length : 1;
+      for (let p = 0; p < parts; p++) {
+        if (signal.aborted) throw new DOMException('Abgebrochen', 'AbortError');
+        state.progressLabel = `Story ${i + 1}/${count}` + (parts > 1 ? `, Teil ${p + 1}/${parts}` : '') + ': ';
+        state.ui.partIdx = p;
+        renderEditor();
+        await produceCurrent(signal, p);
+      }
     }
     state.progressLabel = '';
-    setProgress(1, `Autopilot fertig: ${count} Video(s) erstellt 🎉`);
+    setProgress(1, `Autopilot fertig: ${count} Story(s) verarbeitet 🎉`);
   });
 }
 
@@ -816,11 +966,22 @@ async function init() {
 
   const msel = $('model');
   for (const m of MODELS) msel.add(new Option(m.name, m.id));
-  for (const id of ['model', 'sort', 'time', 'font', 'maxWords', 'cardTheme', 'gameplayFit', 'redditSource']) restoreSelect($(id));
+  for (const n of NICHES) $('niche').add(new Option(n.name, n.id));
+  for (const p of PERSONAS) $('persona').add(new Option(`${p.emoji} ${p.name}`, p.id));
+  for (const m of CLAUDE_MODELS) $('claudeModel').add(new Option(m.name, m.id));
+  for (const id of ['model', 'sort', 'time', 'font', 'maxWords', 'cardTheme', 'gameplayFit', 'redditSource', 'niche', 'persona', 'lang', 'claudeModel', 'visualMode'])
+    restoreSelect($(id));
+  if (!$('personaName').value.trim()) $('personaName').value = getPersona($('persona').value).name;
   saveJson(SETTINGS_KEY, state.settings);
   syncOutputs();
 
-  renderChips();
+  applyNiche({ initial: true });
+  applyPersona({ initial: true });
+  $('writeBtn').onclick = () =>
+    writeScript().catch((e) => {
+      $('writeStatus').textContent = '';
+      showError(e);
+    });
   $('addSubBtn').onclick = addSub;
   $('customSub').addEventListener('keydown', (e) => e.key === 'Enter' && addSub());
   $('connectBtn').onclick = () => connect();
